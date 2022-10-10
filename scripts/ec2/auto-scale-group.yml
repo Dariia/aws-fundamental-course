@@ -1,0 +1,137 @@
+#aws cloudformation create-stack --stack-name auto-scale-group-create --template-body file://///Users/ddrobotko/Documents/Projects/aws_course/aws-fundamental-course/scripts/ec2/ec2_instance.yml --capabilities CAPABILITY_NAMED_IAM --profile default
+#aws cloudformation describe-stacks --stack-name ec2-instance-create
+#aws cloudformation delete-stack --stack-name ec2-instance-create
+
+Description: Create Auto Scale Group
+Parameters:
+  KeyName:
+    Description: EC2 Instance SSH Key
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: my-key
+  OperatorEmail:
+    Description: A valid email address to notify about exidents
+    Type: String
+    Default: drobotcko@gmail.com
+  InstanceType:
+    Description: EC2 Instance Type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+  EC2InstanceAmiId:
+    Description: Ami identifier
+    Type: String
+    Default: ami-08e2d37b6a0129927
+Resources:
+  MyIamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: MyIamInstanceProfile
+      Path: "/"
+      Roles:
+        - !Ref S3Role
+  MyLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub ${AWS::StackName}-launch-template
+      LaunchTemplateData:
+        ImageId: !Ref EC2InstanceAmiId
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyName
+        Monitoring:
+          Enabled: true
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            sudo amazon-linux-extras enable corretto8
+            sudo yum install -y java-1.8.0-amazon-corretto-devel
+        SecurityGroups:
+          - !Ref SSHSecurityGroup
+          - !Ref HTTPSecurityGroup
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref OperatorEmail
+          Protocol: email
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable ssh access via port 22
+      GroupName: SSHSecurityGroup
+      SecurityGroupIngress:
+        IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+        Description: For ssh traffic
+  HTTPSecurityGroup:
+    Description: For internet traffic
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable ssh access via port 80
+      GroupName: HTTPSecurityGroup
+      SecurityGroupIngress:
+        IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+  S3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+  S3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: S3Policy
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Resource: "*"
+      Roles:
+        - Ref: S3Role
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MyLaunchTemplate
+        Version: !GetAtt MyLaunchTemplate.LatestVersionNumber
+
+      AutoScalingGroupName: Auto Scaling Group
+      MinSize: '2'
+      MaxSize: '3'
+      DesiredCapacity: '2'
+      AvailabilityZones:
+        - 'us-west-2a'
+        - 'us-west-2b'
+      NotificationConfigurations:
+        - TopicARN: !Ref NotificationTopic
+          NotificationTypes:
+            - autoscaling:EC2_INSTANCE_LAUNCH
+            - autoscaling:EC2_INSTANCE_LAUNCH_ERROR
+            - autoscaling:EC2_INSTANCE_TERMINATE
+            - autoscaling:EC2_INSTANCE_TERMINATE_ERROR
+Outputs:
+  SNSTopic:
+    Value: !Ref NotificationTopic
+  StackName:
+    Value: !Ref AWS::StackName
