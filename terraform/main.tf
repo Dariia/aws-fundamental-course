@@ -1,20 +1,8 @@
-resource "aws_security_group" "ssh-security-group" {
+resource "aws_security_group" "ssh" {
   name = "ssh-security-group"
   description = "Allow incoming SSH connections."
 
   ingress {
-    from_port = 22
-    to_port = 22
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  egress {
-    from_port = 80
-    to_port = 80
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  egress {
     from_port = 22
     to_port = 22
     protocol = "tcp"
@@ -28,7 +16,7 @@ resource "aws_security_group" "ssh-security-group" {
   }
 }
 
-resource "aws_security_group" "http-security-group" {
+resource "aws_security_group" "http" {
   name = "http-security-group"
   description = "Allow incoming HTTP connections."
 
@@ -39,14 +27,14 @@ resource "aws_security_group" "http-security-group" {
     cidr_blocks = ["0.0.0.0/0"]
   }
   egress {
-    from_port = 80
-    to_port = 80
-    protocol = "tcp"
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
-resource "aws_iam_role" "web_iam_role" {
+resource "aws_iam_role" "web" {
   name = "web_iam_role"
   assume_role_policy = <<EOF
 {
@@ -65,14 +53,14 @@ resource "aws_iam_role" "web_iam_role" {
 EOF
 }
 
-resource "aws_iam_instance_profile" "web_instance_profile" {
+resource "aws_iam_instance_profile" "web" {
   name = "web_instance_profile_2"
-  role = "${aws_iam_role.web_iam_role.id}"
+  role = "${aws_iam_role.web.id}"
 }
 
 resource "aws_iam_role_policy" "web_iam_role_policy" {
   name = "web_iam_role_policy"
-  role = "${aws_iam_role.web_iam_role.id}"
+  role = "${aws_iam_role.web.id}"
   policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -100,18 +88,18 @@ data "template_file" "user_data" {
   }
 }
 
-resource "aws_instance" "web-instance" {
+resource "aws_instance" "web" {
   ami = "${lookup(var.amis, var.aws_region)}"
   instance_type = "t2.micro"
   key_name = "${var.aws_key_name}"
   security_groups = [
-    "${aws_security_group.ssh-security-group.name}",
-    "${aws_security_group.http-security-group.name}"
+    "${aws_security_group.ssh.name}",
+    "${aws_security_group.http.name}"
   ]
-  user_data = "${data.template_file.user_data.rendered}"
-  iam_instance_profile = "${aws_iam_instance_profile.web_instance_profile.id}"
+  user_data = templatefile("script.tftpl", { aws_s3_bucket = "${var.bucket_name}" })
+  iam_instance_profile = "${aws_iam_instance_profile.web.id}"
 }
 
 output "ec2_public_ip" {
-  value = "${aws_instance.web-instance.public_ip}"
+  value = "${aws_instance.web.public_ip}"
 }
