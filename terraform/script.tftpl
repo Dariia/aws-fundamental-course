@@ -1,3 +1,4 @@
 #!/bin/bash
-sudo yum -y install aws-cli
-aws s3 cp s3://${aws_s3_bucket}/myfile.txt ./init/
+sudo yum -y install aws-cli postgresql postgresql-server postgresql-devel postgresql-contrib postgresql-docs
+aws s3 cp s3://${aws_s3_bucket}/rds-script.sql ./init/
+aws s3 cp s3://${aws_s3_bucket}/dynamodb-script.sh ./init/
